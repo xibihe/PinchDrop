@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101416">
+<link rel="icon" href="data:,">
+<title>PinchDrop · 手机照片</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #101416; color: #f2f2eb; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+  main { max-width: 46rem; margin: auto; padding: max(2.2rem, env(safe-area-inset-top)) 1.25rem 2rem; }
+  h1 { margin: 0; font-family: "Songti SC", serif; font-size: 2.7rem; font-weight: 500; letter-spacing: .07em; }
+  p { color: #bfc6c6; margin: .65rem 0 1.6rem; font-size: .94rem; }
+  nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem .85rem; }
+  a { color: inherit; text-decoration: none; touch-action: manipulation; }
+  nav img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; margin-bottom: .55rem; border-radius: .25rem; }
+  nav span { font-size: .93rem; }
+  .photo { display: none; }
+  .photo:target { position: fixed; inset: 0; display: flex; flex-direction: column; background: #000; z-index: 1; }
+  body:has(.photo:target) main { display: none; }
+  .photo img { display: block; flex: 1 1 0; width: 100%; min-height: 0; height: 0; object-fit: contain; }
+  .photo a { align-self: center; flex: none; padding: .8rem 1.5rem max(.8rem, env(safe-area-inset-bottom)); font-size: .88rem; color: #c5cbcb; }
+  header {display:flex; align-items:center; justify-content:space-between}
+  select {font:inherit; color:inherit; background:#192125; border:1px solid #667274; border-radius:.3rem; padding:.45rem}
+</style>
+
+<main id="gallery"><header><h1 data-en="PinchDrop">PinchDrop</h1>
+    <select id="language" aria-label="Language / 语言"><option value="zh">中文</option><option value="en">English</option></select></header>
+    <p data-en="Open the photo you selected on the headset.">在手机上打开头显里选的那张照片。</p>
+    <nav aria-label="场景" data-label-en="Scenes">
+<a href="#00-autumn"><img loading="lazy" src="00-autumn.jpg" alt=""><span data-en="Beijing · Ginkgo">北京 · 银杏</span></a>
+<a href="#02-waterfall"><img loading="lazy" src="02-waterfall.jpg" alt=""><span data-en="Seljalandsfoss">塞里雅兰瀑布</span></a>
+<a href="#10-snow"><img loading="lazy" src="10-snow.jpg" alt=""><span data-en="Irkutsk · Pink Snow at Night">伊尔库茨克 · 粉色雪夜</span></a>
+<a href="#11-lake"><img loading="lazy" src="11-lake.jpg" alt=""><span data-en="Irkutsk · Snow by the Lake">伊尔库茨克 · 湖畔</span></a>
+<!-- Add scene cards here -->
+</nav></main>
+<section class="photo" id="00-autumn"><img loading="lazy" src="00-autumn.jpg" alt="北京 · 银杏" data-alt-en="Beijing · Ginkgo"><a href="#gallery" data-en="Choose another photo">换照片</a></section>
+<section class="photo" id="02-waterfall"><img loading="lazy" src="02-waterfall.jpg" alt="塞里雅兰瀑布" data-alt-en="Seljalandsfoss"><a href="#gallery" data-en="Choose another photo">换照片</a></section>
+<section class="photo" id="10-snow"><img loading="lazy" src="10-snow.jpg" alt="伊尔库茨克 · 粉色雪夜" data-alt-en="Irkutsk · Pink Snow at Night"><a href="#gallery" data-en="Choose another photo">换照片</a></section>
+<section class="photo" id="11-lake"><img loading="lazy" src="11-lake.jpg" alt="伊尔库茨克 · 湖畔" data-alt-en="Irkutsk · Snow by the Lake"><a href="#gallery" data-en="Choose another photo">换照片</a></section>
+<!-- Add full photos here -->
+<script>
+const picker = document.getElementById("language");
+const initial = navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+let selected = initial;
+try { selected = localStorage.getItem("shiguang-language") || initial; } catch {}
+function applyLanguage(value) {
+  const english = value === "en";
+  picker.value = english ? "en" : "zh";
+  document.documentElement.lang = english ? "en" : "zh-CN";
+  document.title = english ? "PinchDrop · Phone Photos" : "PinchDrop · 手机照片";
+  for (const el of document.querySelectorAll("[data-en]")) {
+    el.dataset.zh ??= el.textContent;
+    el.textContent = english ? el.dataset.en : el.dataset.zh;
+  }
+  for (const el of document.querySelectorAll("[data-alt-en]")) {
+    el.dataset.altZh ??= el.alt;
+    el.alt = english ? el.dataset.altEn : el.dataset.altZh;
+  }
+  document.querySelector("nav").setAttribute("aria-label",english ? "Scenes" : "场景");
+}
+applyLanguage(selected);
+picker.addEventListener("change", () => {
+  applyLanguage(picker.value);
+  try { localStorage.setItem("shiguang-language",picker.value); } catch {}
+});
+</script></html>

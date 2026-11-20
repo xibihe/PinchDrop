@@ -1,0 +1,94 @@
+name: PinchDrop
+options:
+  developmentLanguage: en
+  deploymentTarget:
+    visionOS: "26.0"
+packages:
+  MetalSplatter:
+    path: Vendor/MetalSplatter
+targets:
+  PinchDrop:
+    type: application
+    platform: visionOS
+    sources:
+      - path: App
+        excludes: [SceneAssets]
+      - path: App/SceneAssets
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: MetalSplatter
+        product: MetalSplatter
+      - package: MetalSplatter
+        product: SplatIO
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.xibihe.PinchDrop
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: PinchDrop
+        INFOPLIST_KEY_NSHandsTrackingUsageDescription: 追踪右手指尖以捏取、接住和展开光粒。
+        INFOPLIST_KEY_NSWorldSensingUsageDescription: 识别手机上的预设照片，使光粒从照片表面开始。
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "0.5.1"
+        CURRENT_PROJECT_VERSION: 15
+  PinchDropPreview:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - MacPreview
+      - App/Choreography.swift
+      - App/PhotoColors.swift
+      - App/LeafBed.swift
+      - App/SceneLibrary.swift
+      - App/SceneSettingsView.swift
+      - App/Language.swift
+      - path: App/SceneAssets
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: MetalSplatter
+        product: MetalSplatter
+      - package: MetalSplatter
+        product: SplatIO
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.xibihe.PinchDropPreview
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "0.5.1"
+        CURRENT_PROJECT_VERSION: 15
+  SceneEntryUITests:
+    type: bundle.ui-testing
+    platform: visionOS
+    sources:
+      - Tests/SceneEntryUITests.swift
+      - path: App/SceneAssets/Scenes.json
+        buildPhase: resources
+    dependencies:
+      - target: PinchDrop
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.xibihe.SceneEntryUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PinchDrop
+schemes:
+  PinchDrop:
+    build:
+      targets:
+        PinchDrop: all
+    test:
+      config: Release
+      targets: [SceneEntryUITests]
+    run:
+      config: Release
+  PinchDropPreview:
+    build:
+      targets:
+        PinchDropPreview: all
+    run:
+      config: Release

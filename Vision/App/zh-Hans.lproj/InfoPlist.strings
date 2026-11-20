@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "PinchDrop";
+"NSHandsTrackingUsageDescription" = "追踪手指以捏取照片，并从掌心展开场景。";
+"NSWorldSensingUsageDescription" = "定位配对的照片，让光粒从照片表面升起。";

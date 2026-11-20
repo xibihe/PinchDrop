@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+.pinchdrop-import/
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.p12
+*.mobileprovision
+*.pt
+*.pth
+*.mlmodelc/

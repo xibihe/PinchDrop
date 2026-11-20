@@ -1,0 +1,45 @@
+[
+  {
+    "id": "00-autumn",
+    "title": "北京 · 银杏",
+    "photo": "Phone.jpg",
+    "model": "Autumn.sog",
+    "propTitle": "银杏落叶",
+    "sourcePhoto": "IMG_0394 2.HEIC",
+    "titleEN": "Beijing · Ginkgo",
+    "propTitleEN": "Fallen ginkgo leaves"
+  },
+  {
+    "id": "02-waterfall",
+    "title": "塞里雅兰瀑布",
+    "photo": "Gallery/02-waterfall/Photo.jpg",
+    "model": "Gallery/02-waterfall/World.splat",
+    "prop": "Gallery/02-waterfall/Prop.splat",
+    "propTitle": "瀑脚湿岩",
+    "sourcePhoto": "48f787175g28ea95a78fad7361a4cc75 2.JPG",
+    "titleEN": "Seljalandsfoss",
+    "propTitleEN": "Wet rocks"
+  },
+  {
+    "id": "10-snow",
+    "title": "伊尔库茨克 · 粉色雪夜",
+    "photo": "Gallery/10-snow/Photo.jpg",
+    "model": "Gallery/10-snow/World.splat",
+    "prop": "Gallery/10-snow/Prop.splat",
+    "propTitle": "雪夜街边小物（配本地小熊）",
+    "sourcePhoto": "PANA5584.JPG",
+    "titleEN": "Irkutsk · Pink Snow at Night",
+    "propTitleEN": "Bear in the snow"
+  },
+  {
+    "id": "11-lake",
+    "title": "伊尔库茨克 · 湖畔",
+    "photo": "Gallery/11-lake/Photo.jpg",
+    "model": "Gallery/11-lake/World.splat",
+    "prop": "Gallery/11-lake/Prop.splat",
+    "propTitle": "灰岩",
+    "sourcePhoto": "PANA5893.JPG",
+    "titleEN": "Irkutsk · Snow by the Lake",
+    "propTitleEN": "Grey rock"
+  }
+]

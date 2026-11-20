@@ -1,0 +1,10 @@
+{
+  "groundY": [1.2189, -0.00484, 0.08806],
+  "patches": [
+    { "zone": "foreground", "center": [-0.94, 3.44], "radii": [0.90, 0.73], "count": 88, "groundOffset": -0.003 },
+    { "zone": "foreground", "center": [0.93, 3.58], "radii": [0.80, 0.78], "count": 76, "groundOffset": 0.0 },
+    { "zone": "chair", "center": [-0.27, 4.64], "radii": [0.96, 0.52], "count": 72, "groundOffset": -0.008 },
+    { "zone": "chair", "center": [1.26, 4.43], "radii": [0.45, 0.38], "count": 38, "groundOffset": -0.003 },
+    { "zone": "accent", "center": [-0.97, 3.66], "radii": [0.25, 0.16], "count": 6, "groundOffset": -0.003 }
+  ]
+}

@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "PinchDrop";
+"NSHandsTrackingUsageDescription" = "Track your fingertips to pick up the photo and reveal its scene.";
+"NSWorldSensingUsageDescription" = "Locate the paired photo so the particles can rise from its surface.";
