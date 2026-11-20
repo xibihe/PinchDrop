@@ -2,10 +2,10 @@
 
 ## 带第一次使用的人接入作品 · First-time setup
 
-For a first demo, follow the four numbered steps in the English README. Start with Seljalandsfoss on the headset and open the waterfall phone link from the same table. Mac preview uses the PinchDropPreview scheme. Running the hand interaction on Vision Pro uses Xcode with the visionOS SDK, a development team, a paired headset and the PinchDrop scheme. Phone image tracking registers the selected reference with ARKit at runtime. Nobody needs to train an image classifier.
+For a first demo, follow [Try it on Vision Pro](README.md#try-it-on-vision-pro). Start with Seljalandsfoss on the headset and open the waterfall phone link from the same table. Mac preview uses the PinchDropPreview scheme. Running the hand interaction on Vision Pro uses Xcode with the visionOS SDK, a development team, a paired headset and the PinchDrop scheme. Phone image tracking registers the selected reference with ARKit at runtime. Nobody needs to train an image classifier.
 
 1. 先确认对方要体验示例还是换自己的作品。体验示例时，给对方 `Phone/02-waterfall.jpg`，在头显选「塞里雅兰瀑布」。换作品时请对方提供最终显示的 JPEG/PNG 和从同一视角制作、可用于预期用途的高斯。沿用原图的裁切、方向与颜色。 / For the sample, give the viewer `Phone/02-waterfall.jpg`. For a custom scene, ask for the final photo, the matching Gaussian file.
-2. 从仓库根目录执行 README 中的 `Tools/add_scene.py` 命令。给每景一个唯一 ID、中英文标题。Mac 制作示例见 PhotoSplat 3D 工作流，Windows 的模型由创作者自行准备。 / Run the importer with a unique ID and titles.
+2. 从仓库根目录执行 README 中的 `Tools/add_scene.py` 命令。给每景一个唯一 ID、中英文标题。只有原图时，引导对方按[中文制作教程](README.zh-CN.md#换成自己的作品)准备模型。Windows 的工具由创作者自行选择。 / If the creator has only a photo, start with [Bring your own photo](README.md#bring-your-own-photo). Once the model is ready, run the importer with a unique ID and titles.
 3. 把脚本打印的手机图片路径交给对方。已有静态相册地址时给出带场景 ID 的直达链接。重新构建目标应用，核对手机原图与应用参考图逐字节一致，用同名场景试一次捏取和展开。现场头显测试单独记录。 / Hand back the phone photo or hosted deep link, rebuild, and verify the same scene and photo. Record headset testing separately.
 
 - The stable scene ID maps one reference image to one prepared Gaussian cloud. On Vision the selected scene registers its own ARKit reference image. Keep the phone image pixel-identical to the paired reference.

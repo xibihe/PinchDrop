@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-在手机照片边缘捏一下，让颜色汇进掌心。张开手，照片里的地方就在眼前展开。仓库自带视频中的四景、配对照片和高斯模型。第一次可以直接玩塞里雅兰瀑布。
+在手机照片边缘捏一下，让颜色汇进掌心。张开手，照片里的地方就在眼前展开。仓库自带视频中的四景、配对照片和高斯模型。第一次可以直接玩塞里雅兰瀑布。想把自己的照片放进去，再看[换成自己的作品](#换成自己的作品)。
 
 ## 用 Mac 和 Vision Pro 试玩
 
@@ -26,18 +26,28 @@
 
 ## 换成自己的作品
 
-准备**一张最终构图的 JPEG 或 PNG 原图**，以及**与它相同视角和构图的高斯模型**。制作工具由你选择，请确认工具、权重和素材适用于你的用途。
+每一景只需要原图和对应的高斯模型。Apple 将 ML-SHARP 的预训练权重限定于非商业科学研究，许可条款明确排除产品开发，因此 PinchDrop 把模型生成留在应用外。制作工具由你选择，请确认适用于你的用途。已有配对照片和模型，可以直接看下面的**导入并试玩**。[Apple 模型许可](https://github.com/apple-aiml-research/ml-sharp/blob/main/LICENSE_MODEL)
 
-- **Mac**　我用免费的第三方工具 PhotoSplat 3D，个人推荐，无赞助。在「空间照片」里用原图生成高斯，也可以导入现成的高斯 PLY。「压缩并导出模型」里把目标点数设为自定义 **500000**，不足 50 万点就保持原点数，导出 **SOG v2**。[PhotoSplat 3D](https://www.photosplat3d.com/en/)
-- **Windows**　可以自行选工具。非商业科学研究可参考 Apple ML-SHARP 官方的 Python 命令行和模型条款。Vision 可以直接用兼容的高斯 PLY。如果想压成 SOG，安装 PlayCanvas 的转换工具后运行 `splat-transform World.ply World.sog`。[Apple 官方仓库](https://github.com/apple-aiml-research/ml-sharp) · [模型条款](https://github.com/apple-aiml-research/ml-sharp/blob/main/LICENSE_MODEL) · [PlayCanvas 转换工具](https://github.com/playcanvas/splat-transform)
+### 在 Mac 上制作高斯场景
 
-在仓库根目录执行，换成自己的文件名。Windows 可把 `python3` 换成 `py -3`。
+1. 在 Apple 芯片 Mac 上从 App Store 下载 **PhotoSplat 3D**。我用它是因为免费、可以在本机处理照片，个人推荐，无赞助。[Mac App Store 下载](https://apps.apple.com/us/app/photosplat-3d/id6757570552)
+2. 选好要在手机上展示的 JPEG 或 PNG，先定好最终裁切。把这张图导入 PhotoSplat 3D，选**「空间照片」**。生成后看一下前景是否对得上原图。手里已有高斯 PLY 和对应照片，也可以从 PLY 开始。
+3. 打开**「压缩并导出模型」→「目标点数」→「自定义」**，填 **500000**。原模型不足 50 万点就选「保持原点数」。「导出格式」选 **SOG**，点「开始导出」，把导出的 SOG v2 保存为 `World.sog`，同时保留原图。
 
-```sh
-python3 Tools/add_scene.py "我的照片.jpg" "World.sog" --id my-trip --title "我的旅行" --title-en "My Trip"
-```
+**Windows** 可以自行选择制作工具。非商业科学研究可参考 Apple ML-SHARP 官方的 Python 命令行。PinchDrop 可以直接读取兼容的高斯 PLY。要压成 SOG，可安装 PlayCanvas 转换工具，运行 `splat-transform World.ply World.sog`。最后构建并安装到 Vision Pro 需要 Mac 上的 Xcode。[Apple 官方仓库](https://github.com/apple-aiml-research/ml-sharp) · [PlayCanvas 转换工具](https://github.com/playcanvas/splat-transform)
 
-导入脚本把模型和参考图加入 Vision 应用，登记场景，并将**同一张原图原样复制**到 `Phone/scene-my-trip/Photo.jpg`。把这张图发给手机，重新构建应用即可。需要手机相册网站时可托管整个 `Phone/` 文件夹，分享 `index.html#my-trip`。Vision 支持 SOG v2、标准 SPLAT、兼容的高斯 PLY 和 SPZ，源相机坐标为 X 向右、Y 向下、Z 向前。
+### 导入并试玩
+
+1. 解压 PinchDrop 工程，在包含 `Tools/` 和 `Vision/` 的目录里打开终端。运行下面的命令，把引号里的两个路径换成自己的原图和模型。Windows 可把 `python3` 换成 `py -3`。每个场景使用一个新的 ID。
+
+   ```sh
+   python3 Tools/add_scene.py "我的照片.jpg" "World.sog" --id my-trip --title "我的旅行" --title-en "My Trip"
+   ```
+
+2. 把脚本打印的 **Phone photo** 发给手机，打开并完整显示四边。上面的 JPEG 示例会生成 `Phone/scene-my-trip/Photo.jpg`。脚本把原图原样复制到这里，也把相同图片和模型登记进了头显应用。
+3. 回到 Xcode，选 **PinchDrop** 和自己的头显，按 **⌘R** 重新运行。头显选**「我的旅行」→「从手机捏取」**。等四角对齐，在照片边缘捏住，向外拉，等光粒汇入掌心再张手。
+
+需要手机相册网站时，可以托管整个 `Phone/` 目录，分享 `index.html#my-trip` 直达这张照片。PinchDrop 支持 SOG v2、标准 SPLAT、兼容的高斯 PLY 和 SPZ。源相机坐标为 X 向右、Y 向下、Z 向前。
 
 **交给编程助手时可以直接说**「请读 AGENTS.md，把这张照片和配对的高斯模型接进 Vision Pro 版，告诉我手机开哪张图、头显选哪一景、怎样运行。」[Agent 接入说明](AGENTS.md)
 
