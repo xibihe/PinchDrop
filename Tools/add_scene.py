@@ -18,6 +18,8 @@ def add_scene(args, stage):
     key = args.id
     if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', key) or key in {'gallery', 'language'}:
         raise ValueError('Use lowercase letters, numbers and hyphens for the scene ID (gallery and language are reserved).')
+    if args.point_budget is not None and args.point_budget < 1:
+        raise ValueError('The point budget must be a positive integer.')
     photo_ext = args.photo.suffix.lower()
     model_ext = args.model.suffix.lower()
     if photo_ext not in {'.jpeg', '.jpg', '.png'} or model_ext not in {'.sog', '.splat', '.ply', '.spz'}:
@@ -56,6 +58,9 @@ def add_scene(args, stage):
                        model=(app_folder / model_name).relative_to(ASSETS).as_posix(),
                        propTitle='', sourcePhoto=args.photo.name))
 
+    if args.point_budget is not None:
+        scenes[-1]['pointBudget'] = args.point_budget
+
     files = [(args.photo, app_folder / photo_name), (args.model, app_folder / model_name),
              (args.photo, phone_file)]
     updates = {page: html, manifest: json.dumps(scenes, ensure_ascii=False, indent=2) + '\n'}
@@ -90,6 +95,7 @@ def main():
     parser.add_argument('model', type=Path)
     parser.add_argument('--id', required=True, help='Unique scene ID, e.g. waterfall')
     parser.add_argument('--title', required=True, help='Scene title in Chinese or your preferred language')
+    parser.add_argument('--point-budget', type=int, help='Maximum world Gaussians for this scene (default: 650000).')
     parser.add_argument('--title-en', help='English title (defaults to --title)')
     args = parser.parse_args()
     stage = ROOT / '.pinchdrop-import'

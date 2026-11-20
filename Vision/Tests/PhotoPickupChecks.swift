@@ -21,18 +21,12 @@ struct PhotoPickupChecks {
         tracking.clear()
         precondition(tracking.pose(at: 5, head: head) == nil)
 
-        // 边缘可以起捏；照片后方、超出图面和旧版 20 cm 捕获范围内的远处均应被拒绝。
-        precondition(phone.acceptsPinch(at: [0.035, 0.012, 0], aspect: 1.5))
-        precondition(!phone.acceptsPinch(at: [0, -0.03, 0], aspect: 1.5))
-        precondition(!phone.acceptsPinch(at: [0, 0.15, 0], aspect: 1.5))
-        precondition(!phone.acceptsPinch(at: [0, 0.01, 0.065], aspect: 1.5))
-        precondition(phone.acceptsPinch(at: [0, 0.01, 0.065], aspect: 0.7))
-
         let url = URL(fileURLWithPath: CommandLine.arguments[1])
         let image = CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(url as CFURL, nil)!, 0, nil)!
         var dance = Choreography(colors: PhotoColors(image: image)!)
         func step(_ t: Double, _ gap: Float, _ target: PhonePose?) {
-            let hand = PinchSample(center: .zero, tip: .zero, gap: gap)
+            let rightHand = SIMD3<Float>(0.55, -0.18, 0.30)
+            let hand = PinchSample(center: rightHand, tip: rightHand, gap: gap)
             _ = dance.step(hand: hand, phone: target, head: identity, samples: [], now: t)
         }
         let open: Float = 0.065, pinch: Float = 0.01
@@ -67,8 +61,16 @@ struct PhotoPickupChecks {
             if elapsed < 2 { precondition(dance.reveal == nil) }
         }
         let first = dance.reveal!.time
+        let yaw = simd_float4x4(simd_quatf(angle: .pi / 2, axis: [0,1,0]))
+        for head in [identity, yaw] {
+            let reveal = Reveal(seed: [0.55,-0.18,0.30], head: head, points: [], now: 0)
+            let offset = reveal.placementOffset(height: 0.2, depth: -1.5)
+            let delta = reveal.model(3, offset: offset).columns.3 - reveal.model(3).columns.3
+            let expected = head.columns.2.xyz * 1.5 + SIMD3(0,0.2,0)
+            precondition(simd_distance(delta.xyz, expected) < 0.0001)
+        }
         step(4.82, open, nil)
         precondition(dance.reveal?.time == first)
-        print("照片确认、平面边界、短暂遮挡、失跟重捏、方向突变及离屏后释放通过")
+        print("照片确认、远处右手捏取、释放远近、短暂遮挡、失跟重捏、方向突变及离屏后释放通过")
     }
 }

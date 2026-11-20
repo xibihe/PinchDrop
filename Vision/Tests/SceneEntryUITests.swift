@@ -44,6 +44,15 @@ final class SceneEntryUITests: XCTestCase {
 
         try open("Preview reveal")
         expectLoaded(first)
+        let distanceReadout = app.staticTexts["depth-readout"]
+        let previousDistance = distanceReadout.label
+        let closer = app.buttons["Move ten centimeters closer"]
+        let farther = app.buttons["Move ten centimeters farther"]
+        let startOnNearSide = previousDistance.hasPrefix("Closer ")
+        (startOnNearSide ? farther : closer).tap()
+        XCTAssertNotEqual(distanceReadout.label, previousDistance)
+        (startOnNearSide ? closer : farther).tap()
+        XCTAssertEqual(distanceReadout.label, previousDistance)
         leave()
         try open("Pick up from phone")
         leave() // Close as soon as the controls appear, without waiting for readiness.
@@ -58,5 +67,11 @@ final class SceneEntryUITests: XCTestCase {
         leave()
         try open("Preview reveal")
         expectLoaded(next)
+
+        // Terminate with the space open. A new process must use a new compositor session.
+        app.terminate()
+        app.launch()
+        try open("Preview reveal")
+        expectLoaded(first)
     }
 }

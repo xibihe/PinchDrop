@@ -21,6 +21,7 @@ struct PinchspaceApp: App {
         }
         .immersionStyle(selection: $immersion, in: .mixed)
         .upperLimbVisibility(.visible)
+        .restorationBehavior(.disabled)
     }
 }
 
@@ -33,6 +34,7 @@ private struct Controls: View {
     @AppStorage("selectedPhotoScene") private var sceneID = "00-autumn"
     @AppStorage("includeTripoProps") private var includeProps = true
     @State private var heightCM = 0.0
+    @State private var depthCM = 0.0
     private var scene: PhotoScene? { PhotoScene.all.first { $0.id == sceneID } ?? PhotoScene.all.first }
     @AppStorage("photoWidthMM") private var widthMM = CFG.screenWidthMM
     @AppStorage("galleryLeafLayout") private var leafLayout = LeafLayout.accent
@@ -59,9 +61,11 @@ private struct Controls: View {
                             Label(lang.text("分享配对照片到 iPhone", "Share matching photo to iPhone"), systemImage: "square.and.arrow.up")
                         }
                     }
-                    HeightControl(cm: Binding(get: { heightCM }, set: { changeHeight($0, scene: scene) })) {
-                        heightCM = SceneHeights.restore(scene.id)
-                        control.state.withLock { $0.heightCM = heightCM }
+                    PlacementControl(axis: .height, cm: placementBinding(.height, scene: scene)) {
+                        updatePlacement(.height, cm: PlacementAxis.height.restore(scene.id))
+                    }
+                    PlacementControl(axis: .depth, cm: placementBinding(.depth, scene: scene)) {
+                        updatePlacement(.depth, cm: PlacementAxis.depth.restore(scene.id))
                     }
                     if !isOpen && (scene.prop != nil || scene.usesLeafBed) { Toggle(lang.text("场景道具 · ", "Scene prop · ") + scene.propLabel(lang), isOn: $includeProps) }
                 }
@@ -75,6 +79,7 @@ private struct Controls: View {
                     }
                     Button(lang.text("手动定位手机", "Locate phone manually")) { control.request(.calibrate) }
                 } else {
+                    if isBusy { ProgressView(lang.text("正在打开场景…", "Opening scene…")) }
                     if info.closed { Text(info.message).font(.caption).foregroundStyle(.secondary) }
                     Stepper(lang.text("照片实际显示宽度：\(widthMM) mm", "Displayed photo width: \(widthMM) mm"), value: $widthMM, in: 30...190)
                     Text(lang.text("按手机上照片左右边缘之间的距离填写。完整显示照片，避免放大裁切。", "Measure between the visible left and right edges. Keep the entire photo in view."))
@@ -104,7 +109,8 @@ private struct Controls: View {
         .onChange(of: sceneID, initial: true) { _, _ in
             if let scene {
                 if scene.id != sceneID { sceneID = scene.id }
-                heightCM = SceneHeights.value(for: scene.id)
+                heightCM = PlacementAxis.height.value(for: scene.id)
+                depthCM = PlacementAxis.depth.value(for: scene.id)
             }
         }
         .task(id: isOpen ? control.id : nil) {
@@ -126,15 +132,28 @@ private struct Controls: View {
         guard isOpen, !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
+        control.state.withLock { $0.stopRequested = true }
         sessions.take(control.id)
         await dismissSpace()
         isOpen = false
     }
 
-    private func changeHeight(_ cm: Double, scene: PhotoScene) {
-        heightCM = cm
-        SceneHeights.save(cm, for: scene.id)
-        control.state.withLock { $0.heightCM = cm }
+    private func placementBinding(_ axis: PlacementAxis, scene: PhotoScene) -> Binding<Double> {
+        Binding(get: { axis == .height ? heightCM : depthCM }, set: { cm in
+            axis.save(cm, for: scene.id)
+            updatePlacement(axis, cm: cm)
+        })
+    }
+
+    private func updatePlacement(_ axis: PlacementAxis, cm: Double) {
+        switch axis {
+        case .height:
+            heightCM = cm
+            control.state.withLock { $0.heightCM = cm }
+        case .depth:
+            depthCM = cm
+            control.state.withLock { $0.depthCM = cm }
+        }
     }
 
     @MainActor private func enter(preview: Bool) async {
@@ -146,6 +165,7 @@ private struct Controls: View {
             $0.sceneID = scene.id
             $0.includeProps = includeProps
             $0.heightCM = heightCM
+            $0.depthCM = depthCM
             $0.widthMM = widthMM
             $0.leafLayout = leafLayout
             $0.leafDensity = leafDensity

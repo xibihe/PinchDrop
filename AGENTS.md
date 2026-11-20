@@ -17,4 +17,4 @@ For a first demo, follow [Try it on Vision Pro](README.md#try-it-on-vision-pro).
 
 ### 场景首次进入回归
 
-每次打开沉浸空间都用独立 UUID 将窗口与对应的 StageControl 配对。渲染器只能领取该次请求，避免上一次空间的回调更新新窗口。首个可绘制索引缓冲区就绪时显示加载完成，后台深度排序持续进行。使用 Xcode 的 PinchDrop scheme 在 visionOS 模拟器运行 ⌘U，SceneEntryUITests 会检查冷启动、退出后快速重进、预览及捏取入口，并在有多景时切换照片核对场景名称。
+每次打开沉浸空间都用独立 UUID 将窗口与对应的 StageControl 配对。渲染器只能领取该次请求，避免上一次空间的回调更新新窗口。每次动作等带有效头部位姿的内置屏帧提交并由 GPU 完成后才报告已加载。预览先启动头部追踪，捏取再请求互动权限。使用 Xcode 的 PinchDrop scheme 在 visionOS 模拟器运行 ⌘U，SceneEntryUITests 会检查冷启动、退出后快速重进、预览及捏取入口，并在有多景时切换照片核对场景名称。

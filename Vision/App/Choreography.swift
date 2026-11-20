@@ -3,9 +3,6 @@ import simd
 
 enum CFG {
     static let screenWidthMM = 69 // 照片画面实际宽度，毫米；手机竖屏全宽。
-    static let pickupEdge: Float = 0.030 // 指尖可在照片边缘外 3 cm 起捏。
-    static let pickupFront: Float = 0.060 // 照片朝观众一侧 6 cm 内。
-    static let pickupBehind: Float = 0.018 // 为深度误差留 1.8 cm 背面容差。
     static let pinchIn: Float = 0.030 // 拇指食指小于 3 cm，开始捏住。
     static let pinchOut: Float = 0.050 // 指尖张开超过 5 cm，释放。
     static let handGrace = 0.16 // 秒；遮挡太久取消，不能把丢手当松手。
@@ -46,13 +43,6 @@ struct PhonePose: Sendable {
         self.anchorID = anchorID
     }
 
-    func acceptsPinch(at point: SIMD3<Float>, aspect: Float) -> Bool {
-        let offset = point - center
-        let depth = simd_dot(offset, normal)
-        return abs(simd_dot(offset, right)) <= width / 2 + CFG.pickupEdge
-            && abs(simd_dot(offset, up)) <= width / (2 * aspect) + CFG.pickupEdge
-            && (-CFG.pickupBehind...CFG.pickupFront).contains(depth)
-    }
 }
 
 struct PalmPose {
@@ -114,7 +104,12 @@ struct Reveal: Sendable {
         Float(max(0, min(1, (now - time) / CFG.revealSeconds)))
     }
 
-    func model(_ now: Double, height: Float = 0) -> simd_float4x4 {
+    // Move along the horizontal viewing direction captured at release, even if the viewer turns.
+    func placementOffset(height: Float, depth: Float) -> SIMD3<Float> {
+        simd_normalize(finalModel.columns.2.xyz) * depth + SIMD3(0, height, 0)
+    }
+
+    func model(_ now: Double, offset: SIMD3<Float> = .zero) -> simd_float4x4 {
         let t = progress(now)
         // 临界阻尼的闭式曲线，归一到结束位置。世界坐标从指尖统一放大。
         let grown = (1 - (1 + 5 * t) * exp(-5 * t)) / (1 - 6 * exp(Float(-5)))
@@ -123,7 +118,7 @@ struct Reveal: Sendable {
         model.columns.0 *= scale
         model.columns.1 *= scale
         model.columns.2 *= scale
-        let destination = model.columns.3.xyz + SIMD3(0, height, 0)
+        let destination = model.columns.3.xyz + offset
         model.columns.3 = SIMD4(seed + (destination - seed) * scale, 1)
         return model
     }
@@ -235,7 +230,7 @@ struct Choreography {
                     isArmed = true
                 } else if gap <= CFG.pinchIn, isArmed {
                     isArmed = false
-                    if let phone, phone.acceptsPinch(at: hand.center, aspect: colors.aspect) {
+                    if let phone {
                         start = now
                         lastPhotoSeen = now
                         source = phone

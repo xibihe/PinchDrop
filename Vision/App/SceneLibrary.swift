@@ -7,6 +7,7 @@ import simd
 
 struct PhotoScene: Decodable, Identifiable, Hashable, Sendable {
     let id, title, photo, model, propTitle, sourcePhoto: String
+    let pointBudget: Int?
     let prop: String?
     let titleEN, propTitleEN: String?
     func label(_ language: AppLanguage) -> String { language.text(title, titleEN ?? title) }
@@ -44,9 +45,10 @@ struct PhotoScene: Decodable, Identifiable, Hashable, Sendable {
             return result
         }
         var points = try await readFile(model)
-        if points.count > CFG.worldPointBudget {
+        let budget = max(1, pointBudget ?? CFG.worldPointBudget)
+        if points.count > budget {
             let count = points.count
-            points = (0..<CFG.worldPointBudget).map { points[($0 * count + count / 2) / CFG.worldPointBudget] }
+            points = (0..<budget).map { points[($0 * count + count / 2) / budget] }
         }
         if includeProps {
             if let prop {
@@ -62,31 +64,37 @@ struct PhotoScene: Decodable, Identifiable, Hashable, Sendable {
     }
 }
 
-enum SceneHeights {
+enum PlacementAxis: String {
+    case height = "heightCM"
+    case depth = "depthCM"
+
     static let range = -300.0...300.0
-    static let file = "Heights.json"
-    static let bundled = (try? JSONDecoder().decode([String: Double].self,
+    static let file = "Placement.json"
+    static let presets = (try? JSONDecoder().decode([String: [String: Double]].self,
         from: Data(contentsOf: PhotoScene.directory.appendingPathComponent(file)))) ?? [:]
+    private static let legacyHeights = (try? JSONDecoder().decode([String: Double].self,
+        from: Data(contentsOf: PhotoScene.directory.appendingPathComponent("Heights.json")))) ?? [:]
 
-    static func value(for id: String) -> Double {
-        let number = UserDefaults.standard.object(forKey: "heightCM." + id) as? NSNumber
-        let cm = number?.doubleValue ?? bundled[id] ?? 0
-        return cm.isFinite ? min(range.upperBound, max(range.lowerBound, cm)) : 0
+    func value(for id: String) -> Double {
+        let saved = UserDefaults.standard.object(forKey: rawValue + "." + id) as? NSNumber
+        let fallback = self == .height ? Self.legacyHeights[id] : nil
+        let cm = saved?.doubleValue ?? Self.presets[id]?[rawValue] ?? fallback ?? 0
+        return cm.isFinite ? min(Self.range.upperBound, max(Self.range.lowerBound, cm)) : 0
     }
 
-    static func save(_ cm: Double, for id: String) {
-        UserDefaults.standard.set(cm.rounded(), forKey: "heightCM." + id)
+    func save(_ cm: Double, for id: String) {
+        UserDefaults.standard.set(cm.rounded(), forKey: rawValue + "." + id)
     }
 
-    static func restore(_ id: String) -> Double {
-        UserDefaults.standard.removeObject(forKey: "heightCM." + id)
+    func restore(_ id: String) -> Double {
+        UserDefaults.standard.removeObject(forKey: rawValue + "." + id)
         return value(for: id)
     }
 }
 
 extension Reveal {
-    func effect(at now: Double, height: Float) -> SplatRenderer.RevealEffect {
-        let relative = finalModel.inverse * SIMD4<Float>(0,height,0,0)
+    func effect(at now: Double, offset: SIMD3<Float>) -> SplatRenderer.RevealEffect {
+        let relative = finalModel.inverse * SIMD4(offset, 0)
         return .init(progress: progress(now), frontWidth: 0.27, seedRadius: 0.013,
                      origin: localSeed - relative.xyz, style: 5, radius: radius)
     }

@@ -9,7 +9,7 @@ Pinch a photo off your phone and open your hand to stand inside it. All four sce
 1. On your Mac, [download the project ZIP](https://github.com/xibihe/PinchDrop/archive/refs/heads/main.zip) and unzip it. Open `Vision/PinchDrop.xcodeproj` in Xcode with the visionOS 26 SDK. For a quick look on an Apple silicon Mac, choose **PinchDropPreview → My Mac → Run**. This previews the reveal.
 2. For the hand interaction, use a paired Vision Pro running visionOS 26 or later with Developer Mode enabled. In Xcode select the **PinchDrop** target, open **Signing & Capabilities**, select your development team and use a bundle identifier available to you. Choose the **PinchDrop** scheme and your headset as the destination, then press **⌘R**.
 3. Select **Seljalandsfoss** in the headset. Open the [waterfall photo](https://raw.githubusercontent.com/xibihe/PinchDrop/main/Phone/02-waterfall.jpg) on your phone and fit the entire image on screen. You can also use the share button in the headset to send the selected photo to an iPhone. Any phone that can display the image works.
-4. Allow world sensing and hand tracking. Choose **Pick up from phone**. When the four corner markers align, open your right hand, pinch the edge of the photo and pull away. When the particles have gathered in your palm, open your hand. To switch scenes, exit the immersive space and select the next scene on both devices.
+4. Allow world sensing and hand tracking. Choose **Pick up from phone**. When the four corner markers align, open your right hand and pinch anywhere the headset can track it. When the particles have gathered in your palm, open your hand. Adjust **Reveal distance** during preview to move the scene closer or farther. To switch scenes, exit the immersive space and select the next scene on both devices.
 
 | Scene in the headset | Open on the phone |
 | --- | --- |
@@ -45,9 +45,11 @@ PinchDrop uses one original photo and one prepared Gaussian scene. We keep gener
    ```
 
 2. Send the **Phone photo** printed by the script to your phone and open it full-frame. For this JPEG example, it’s `Phone/scene-my-trip/Photo.jpg`. The script copies the original image byte for byte and registers it alongside the model.
-3. In Xcode, run **PinchDrop** on the headset again with **⌘R**. Select **My Trip → Pick up from phone**. Wait for the four markers, pinch the edge of the photo, then open your hand.
+3. In Xcode, run **PinchDrop** on the headset again with **⌘R**. Select **My Trip → Pick up from phone**. Wait for the four markers, pinch anywhere with your right hand, then open it when the particles reach your palm.
 
 If you host the whole `Phone/` folder, `index.html#my-trip` opens that scene’s photo directly. PinchDrop accepts SOG v2, standard SPLAT, compatible Gaussian PLY and SPZ. Source camera axes are right, down and forward.
+
+To compare two models from the same photo, import each with a different scene ID and the same image. To keep up to 800,000 world Gaussians for one scene, add `--point-budget 800000` to its import command. Each scene remembers its own reveal distance and height.
 
 **Using a coding assistant?** Give it the two files and say “Read AGENTS.md, add my photo and matching Gaussian scene for Vision Pro, and tell me which image to open on my phone and how to run it.” [Agent guide](AGENTS.md)
 

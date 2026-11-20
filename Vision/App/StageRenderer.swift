@@ -4,6 +4,7 @@ import CompositorServices
 import ImageIO
 import Metal
 import MetalSplatter
+import OSLog
 import QuartzCore
 import SplatIO
 import SwiftUI
@@ -28,6 +29,7 @@ struct StageConfiguration: CompositorLayerConfiguration {
 
 final class StageRenderer: @unchecked Sendable {
     private struct World {
+        let readyMessage: String
         let renderer: SplatRenderer
         let samples: [SIMD3<Float>]
     }
@@ -37,6 +39,7 @@ final class StageRenderer: @unchecked Sendable {
         let right, up, pixelScale: SIMD4<Float>
     }
 
+    private static let log = Logger(subsystem: "art.xibihe.PinchDrop", category: "SceneStartup")
     private let lang = AppLanguage.current
     private let layer: LayerRenderer
     private let control: StageControl
@@ -50,9 +53,15 @@ final class StageRenderer: @unchecked Sendable {
     private let head = WorldTrackingProvider()
     private let hands = HandTrackingProvider()
     private let world = Mutex<World?>(nil)
-    private var imageProvider: ImageTrackingProvider?
+    private struct InteractionTracking {
+        var handsAvailable = false
+        var image: ImageTrackingProvider?
+    }
+    private let interaction = Mutex<InteractionTracking?>(nil)
+    private var interactionTask: Task<Void, Never>?
+    private var imageProvider: ImageTrackingProvider? { interaction.withLock { $0?.image } }
     private var photoTracking = PhotoTracking()
-    private var handEnabled = false
+    private var handEnabled: Bool { interaction.withLock { $0?.handsAvailable == true } }
     private let scene: PhotoScene
     private var preview: Reveal?
     private var actionRevision = 0
@@ -116,34 +125,43 @@ final class StageRenderer: @unchecked Sendable {
     }
 
     static func start(_ layer: LayerRenderer, control: StageControl) {
-        do {
-            let stage = try StageRenderer(layer, control)
-            Task(executorPreference: StageExecutor.shared) {
+        // The compositor hands this layer to its own render executor exactly once.
+        nonisolated(unsafe) let renderLayer = layer
+        Task.detached(executorPreference: StageExecutor(), priority: .userInitiated) {
+            do {
+                log.info("Opening immersive session \(control.id, privacy: .public)")
+                let stage = try StageRenderer(renderLayer, control)
                 await stage.run()
                 control.state.withLock { $0.closed = true }
-            }
-        } catch {
-            control.state.withLock {
-                $0.message = error.localizedDescription
-                $0.needsDismissal = true
-                $0.closed = true
+            } catch {
+                log.error("Renderer setup failed: \(error.localizedDescription, privacy: .public)")
+                control.fail(error.localizedDescription)
             }
         }
     }
 
-    private func run() async {
-        if layer.configuration.isFoveationEnabled { layer.renderQuality = .init(CFG.renderQuality) }
-        defer { session.stop() }
+    private func startInteractionTracking() {
+        guard interactionTask == nil else { return }
+        interactionTask = Task.detached(priority: .userInitiated) {
+            do { try await self.enableInteractionTracking() }
+            catch is CancellationError { }
+            catch { self.control.fail(self.lang.text("互动追踪启动失败：\(error.localizedDescription)", "Interaction tracking failed: \(error.localizedDescription)")) }
+        }
+    }
 
+    private func enableInteractionTracking() async throws {
         let supportsHands = HandTrackingProvider.isSupported
         let supportsImage = ImageTrackingProvider.isSupported
         let requests: [ARKitSession.AuthorizationType] =
             (supportsHands ? [.handTracking] : []) + (supportsImage ? [.worldSensing] : [])
-        let permissions = await session.requestAuthorization(for: requests)
-        handEnabled = supportsHands && permissions[.handTracking] == .allowed
+        let permissions = requests.isEmpty ? [:] : await session.requestAuthorization(for: requests)
+        try Task.checkCancellation()
+        guard !stopping else { return }
+        let handEnabled = supportsHands && permissions[.handTracking] == .allowed
         var providers: [any DataProvider] = [head]
         if handEnabled { providers.append(hands) }
 
+        var imageProvider: ImageTrackingProvider?
         if supportsImage, permissions[.worldSensing] == .allowed {
             var reference = ReferenceImage(cgimage: cover, physicalSize: CGSize(
                 width: Double(width), height: Double(width) * Double(cover.height) / Double(cover.width)),
@@ -153,26 +171,39 @@ final class StageRenderer: @unchecked Sendable {
         }
 
         if let imageProvider { providers.append(imageProvider) }
-        do {
-            try await session.run(providers)
-        } catch {
-            control.state.withLock {
-                $0.message = self.lang.text("空间追踪启动失败：\(error.localizedDescription)", "Tracking failed to start: \(error.localizedDescription)")
-                $0.needsDismissal = true
-            }
-            return
-        }
+        if providers.count > 1 { try await session.run(providers) }
+        try Task.checkCancellation()
+        interaction.withLock { $0 = InteractionTracking(handsAvailable: handEnabled, image: imageProvider) }
+    }
 
+    private var stopping: Bool {
+        control.state.withLock { $0.stopRequested || $0.closed } || layer.state == .invalidated
+    }
+
+    private func run() async {
+        guard !stopping else { return }
+        if layer.configuration.isFoveationEnabled { layer.renderQuality = .init(CFG.renderQuality) }
         let loading = Task.detached(priority: .userInitiated) {
             do { try await self.load() }
             catch is CancellationError { }
-            catch { self.control.state.withLock { $0.message = self.lang.text("场景加载失败：\(error.localizedDescription)", "Could not load the scene: \(error.localizedDescription)") } }
+            catch { self.control.fail(self.lang.text("场景加载失败：\(error.localizedDescription)", "Could not load the scene: \(error.localizedDescription)")) }
         }
-        defer { loading.cancel() }
-        while layer.state != .invalidated {
-            autoreleasepool {
-                if layer.state == .paused { layer.waitUntilRunning() }
-                else if layer.state == .running { frame() }
+        defer {
+            loading.cancel()
+            interactionTask?.cancel()
+            session.stop()
+        }
+        do { try await session.run([head]) }
+        catch {
+            control.fail(lang.text("头部追踪启动失败：\(error.localizedDescription)", "Head tracking failed: \(error.localizedDescription)"))
+            return
+        }
+        while !stopping {
+            if layer.state == .running {
+                if control.state.withLock({ $0.action != .preview }) { startInteractionTracking() }
+                autoreleasepool { frame() }
+            } else {
+                try? await Task.sleep(for: .milliseconds(20))
             }
         }
     }
@@ -186,10 +217,14 @@ final class StageRenderer: @unchecked Sendable {
             depthFormat: layer.configuration.depthFormat, sampleCount: 1, maxViewCount: layer.properties.viewCount,
             maxSimultaneousRenders: 8, highQualityDepth: true, clearColor: transparent)
         try await renderer.prepareScene(points, device: layer.device)
-        world.withLock { $0 = World(renderer: renderer, samples: samples) }
+        try Task.checkCancellation()
+        Self.log.info("Prepared \(points.count) Gaussians for session \(self.control.id, privacy: .public)")
+        let ready = lang.text("已加载 · \(scene.title) · \(points.count.formatted()) 个高斯", "Loaded · \(scene.label(.english)) · \(points.count.formatted()) Gaussians")
         control.state.withLock {
-            $0.message = self.lang.text("已加载 · \(scene.title) · \(points.count.formatted()) 个高斯", "Loaded · \(scene.label(.english)) · \(points.count.formatted()) Gaussians")
+            guard !$0.closed, !$0.stopRequested else { return }
+            $0.message = self.lang.text("模型就绪，等待头显定位和首帧…", "Model ready. Waiting for head tracking and the first frame…")
         }
+        world.withLock { $0 = World(readyMessage: ready, renderer: renderer, samples: samples) }
     }
 
     private func pinch(at timestamp: Double) -> PinchSample? {
@@ -262,7 +297,7 @@ final class StageRenderer: @unchecked Sendable {
             }
         }
         if preview != nil {
-            setHint(self.lang.text("预览中 · 调整高度，或点「回到捏取」开始拍摄。", "Previewing. Adjust the height or choose Back to pickup."))
+            setHint(self.lang.text("预览中 · 可调整远近和高度，或点「回到捏取」开始拍摄。", "Previewing. Adjust distance and height, or choose Back to pickup."))
             return []
         }
         if let when = calibrationAt {
@@ -288,10 +323,12 @@ final class StageRenderer: @unchecked Sendable {
             setHint(self.lang.text("掌心已收到。张开右手，展开照片。", "The colors have arrived. Open your right hand to reveal the scene."))
         } else if dance.isTransferring {
             setHint(self.lang.text("正在传到掌心…", "The colors are moving into your palm…"))
+        } else if interaction.withLock({ $0 == nil }) {
+            setHint(lang.text("正在启动互动追踪，请留意系统权限提示。", "Starting interaction tracking. Check for a permission prompt."))
         } else if !handEnabled {
             setHint(self.lang.text("请允许手部追踪后重新打开。", "Allow hand tracking, then reopen the experience."))
         } else if let phone {
-            setHint(manualPhone != nil ? self.lang.text("已手动定位。手机保持静止；点「回到捏取」可重新自动识别。", "Phone placed manually. Keep it still, or choose Back to pickup to track it again.") : self.lang.text("四个角点应贴住照片。右手在照片边缘捏住，再移向掌心。", "Line up the four dots with the photo. Pinch its edge with your right hand and draw it toward you."))
+            setHint(manualPhone != nil ? self.lang.text("已手动定位。手机保持静止；点「回到捏取」可重新自动识别。", "Phone placed manually. Keep it still, or choose Back to pickup to track it again.") : self.lang.text("四角对齐后，在任意可追踪位置张开右手，再捏住。", "Once the four dots line up, open and pinch your right hand anywhere it can be tracked."))
             if glows.isEmpty {
                 let halfRight = phone.right * phone.width * 0.5
                 let halfUp = phone.up * (phone.width / photoColors.aspect * 0.5)
@@ -316,18 +353,18 @@ final class StageRenderer: @unchecked Sendable {
     }
 
     private func frame() {
-        gate.acquire(limit: 1)
+        guard gate.acquire(limit: 1) else { return }
         var submitted = false
         defer { if !submitted { gate.release() } }
         guard layer.state == .running, let frame = layer.queryNextFrame() else { return }
+        guard let timing = frame.predictTiming() else { return }
         frame.startUpdate()
         frame.endUpdate()
-        guard let timing = frame.predictTiming() else { return }
         LayerRenderer.Clock().wait(until: timing.optimalInputTime)
-        let drawables = frame.queryDrawables().sorted { $0.target == .builtIn && $1.target != .builtIn }
-        guard !drawables.isEmpty else { return }
+        guard layer.state == .running, !stopping else { return }
         frame.startSubmission()
         defer { frame.endSubmission() }
+        let drawables = frame.queryDrawables().sorted { $0.target == .builtIn && $1.target != .builtIn }
         let asset = world.withLock { $0 }
         var glowCount = 0
         var surface: PhotoSurface?
@@ -338,9 +375,10 @@ final class StageRenderer: @unchecked Sendable {
             let duration = LayerRenderer.Clock.Instant.epoch.duration(to: drawable.frameTiming.presentationTime)
             let timestamp = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
             let anchor = head.state == .running ? head.queryDeviceAnchor(atTimestamp: timestamp) : nil
-            let pose = anchor?.isTracked == true ? anchor?.originFromAnchorTransform : nil
+            guard let anchor, anchor.isTracked else { continue }
+            let pose = anchor.originFromAnchorTransform
             drawable.deviceAnchor = anchor
-            if i == 0, let pose, let asset {
+            if i == 0, let asset {
                 var glows = update(timestamp: timestamp, pose: pose, asset: asset, surface: &surface)
                 // 近处的软边叠在远处的颗粒上。单帧 in-flight 结束后才能覆写顶点。
                 let backward = pose.columns.2.xyz
@@ -354,8 +392,9 @@ final class StageRenderer: @unchecked Sendable {
             }
             let time = CACurrentMediaTime()
             let reveal = preview ?? dance.reveal
-            let height = Float(control.state.withLock { $0.heightCM }) / 100
-            let model = reveal?.model(time, height: height) ?? matrix_identity_float4x4
+            let (height, depth) = control.state.withLock { (Float($0.heightCM) / 100, Float($0.depthCM) / 100) }
+            let offset = reveal?.placementOffset(height: height, depth: depth) ?? .zero
+            let model = reveal?.model(time, offset: offset) ?? matrix_identity_float4x4
             let layered = layer.configuration.layout == .layered
             let groups = layered ? [Array(drawable.views.indices)] : drawable.views.indices.map { [$0] }
             var ready = true
@@ -367,9 +406,9 @@ final class StageRenderer: @unchecked Sendable {
                 let colorTexture = drawable.colorTextures[textureIndex]
                 let depthTexture = drawable.depthTextures[textureIndex]
                 let viewports = indices.map { drawable.views[$0].textureMap.viewport }
-                let cameras = indices.map { (pose ?? matrix_identity_float4x4) * drawable.views[$0].transform }
+                let cameras = indices.map { pose * drawable.views[$0].transform }
                 let projections = indices.map { drawable.computeProjection(viewIndex: $0) }
-                let paintWorld = pose != nil && reveal != nil && asset != nil
+                let paintWorld = reveal != nil && asset != nil
                 if paintWorld, let reveal, let asset {
                     let vp = zip(viewports.indices, viewports).map { index, viewport in
                         SplatRenderer.ViewportDescriptor(viewport: viewport,
@@ -380,7 +419,7 @@ final class StageRenderer: @unchecked Sendable {
                         ready = try asset.renderer.render(viewports: vp, colorTexture: colorTexture,
                             colorStoreAction: .store, depthTexture: depthTexture, rasterizationRateMap: rateMap,
                             renderTargetArrayLength: arrayLength,
-                            revealEffect: reveal.effect(at: time, height: height),
+                            revealEffect: reveal.effect(at: time, offset: offset),
                             accessTimeout: 0, sortTimeout: 0, to: commands)
                     } catch {
                         ready = false
@@ -388,7 +427,7 @@ final class StageRenderer: @unchecked Sendable {
                     }
                 }
                 guard ready else { break }
-                let hasOverlay = pose != nil && (glowCount > 0 || surface != nil)
+                let hasOverlay = glowCount > 0 || surface != nil
                 if !paintWorld || hasOverlay {
                     let pass = MTLRenderPassDescriptor()
                     pass.colorAttachments[0].texture = colorTexture
@@ -436,7 +475,19 @@ final class StageRenderer: @unchecked Sendable {
                     encoder.endEncoding()
                 }
             }
-            if ready { drawable.encodePresent(commandBuffer: commands) }
+            if ready {
+                drawable.encodePresent(commandBuffer: commands)
+                let revision = actionRevision
+                if drawable.target == .builtIn, let asset,
+                   control.state.withLock({ $0.revision == revision && $0.readyRevision != revision }) {
+                    let message = asset.readyMessage
+                    commands.addCompletedHandler { [control] buffer in
+                        if buffer.status == .completed, control.frameCompleted(revision: revision, message: message) {
+                            Self.log.info("First anchored frame completed for session \(control.id, privacy: .public), action \(revision)")
+                        }
+                    }
+                }
+            }
             prior?.commit()
             prior = commands
         }
@@ -462,7 +513,6 @@ private enum StageError: LocalizedError {
 }
 
 private final class StageExecutor: TaskExecutor {
-    static let shared = StageExecutor()
     private let queue = DispatchQueue(label: "Pinchspace.Compositor", qos: .userInteractive)
     func enqueue(_ job: UnownedJob) {
         queue.async { job.runSynchronously(on: self.asUnownedTaskExecutor()) }

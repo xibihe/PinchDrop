@@ -20,19 +20,19 @@ struct PreviewWorld {
         release = Reveal(seed: [0.12, -0.18, -0.46], head: matrix_identity_float4x4, points: samples, now: 0)
     }
 
-    func draw(to texture: MTLTexture, depth: MTLTexture, at elapsed: Double, heightCM: Double,
+    func draw(to texture: MTLTexture, depth: MTLTexture, at elapsed: Double, heightCM: Double, depthCM: Double = 0,
               command: MTLCommandBuffer, timeout: CFTimeInterval = 0) throws -> Bool {
         let w = texture.width, h = texture.height
         let f: Float = 1.14 * min(1, Float(w) / Float(h) / 1.36)
         let projection = simd_float4x4(SIMD4(f * Float(h) / Float(w),0,0,0), SIMD4(0,f,0,0),
                                        SIMD4(0,0,0,-1), SIMD4(0,0,0.025,0))
-        let height = Float(heightCM) / 100
+        let offset = release.placementOffset(height: Float(heightCM) / 100, depth: Float(depthCM) / 100)
         let vp = SplatRenderer.ViewportDescriptor(viewport: MTLViewport(originX: 0, originY: 0,
             width: Double(w), height: Double(h), znear: 0, zfar: 1), projectionMatrix: projection,
-            viewMatrix: release.model(elapsed, height: height), screenSize: SIMD2(w,h))
+            viewMatrix: release.model(elapsed, offset: offset), screenSize: SIMD2(w,h))
         return try renderer.render(viewports: [vp], colorTexture: texture, colorStoreAction: .store,
             depthTexture: depth, rasterizationRateMap: nil, renderTargetArrayLength: 1,
-            revealEffect: release.effect(at: elapsed, height: height),
+            revealEffect: release.effect(at: elapsed, offset: offset),
             accessTimeout: timeout, sortTimeout: timeout, to: command)
     }
 }

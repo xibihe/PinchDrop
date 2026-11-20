@@ -5,11 +5,15 @@ final class RenderInFlightGate: @unchecked Sendable {
     private let condition = NSCondition()
     private var count = 0
 
-    func acquire(limit: Int) {
+    func acquire(limit: Int) -> Bool {
         condition.lock()
         defer { condition.unlock() }
-        while count >= max(1, limit) { condition.wait() }
+        let deadline = Date(timeIntervalSinceNow: 0.02)
+        while count >= max(1, limit) {
+            if !condition.wait(until: deadline) { return false }
+        }
         count += 1
+        return true
     }
 
     func release() {

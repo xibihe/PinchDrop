@@ -467,10 +467,12 @@ public final class SplatRenderer: @unchecked Sendable {
 
         self.accessState = Mutex(AccessState())
 
-        do {
-            library = try device.makeDefaultLibrary(bundle: Bundle.module)
-        } catch {
-            fatalError("Unable to initialize SplatRenderer: \(error)")
+        library = try device.makeDefaultLibrary(bundle: Bundle.module)
+        // Build the initial pipelines on the scene-loading task, before its first drawable.
+        if useMultiStagePipeline {
+            try buildMultiStagePipelineStatesIfNeeded()
+        } else {
+            try buildSingleStagePipelineStatesIfNeeded()
         }
     }
 
