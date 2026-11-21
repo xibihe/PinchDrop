@@ -63,6 +63,12 @@ final class SceneEntryUITests: XCTestCase {
             choice.tap()
         }
         try open("Pick up from phone")
+        // Switching the controls during startup must leave the compositor able to present.
+        app.buttons["Preview reveal"].tap()
+        app.buttons["Back to pickup"].tap()
+        app.buttons["Preview reveal"].tap()
+        expectLoaded(next)
+        app.buttons["Back to pickup"].tap()
         expectLoaded(next)
         leave()
         try open("Preview reveal")

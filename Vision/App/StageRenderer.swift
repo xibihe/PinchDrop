@@ -361,25 +361,25 @@ final class StageRenderer: @unchecked Sendable {
         frame.startUpdate()
         frame.endUpdate()
         LayerRenderer.Clock().wait(until: timing.optimalInputTime)
-        guard layer.state == .running, !stopping else { return }
+        guard layer.state == .running, !stopping, let commands = queue.makeCommandBuffer() else { return }
         frame.startSubmission()
-        defer { frame.endSubmission() }
         let drawables = frame.queryDrawables().sorted { $0.target == .builtIn && $1.target != .builtIn }
+        // An empty list cancels and invalidates the frame. Even endSubmission is invalid then.
+        guard !drawables.isEmpty else { return }
         let asset = world.withLock { $0 }
         var glowCount = 0
         var surface: PhotoSurface?
-        var prior: MTLCommandBuffer?
 
         for (i, drawable) in drawables.enumerated() {
-            guard let commands = queue.makeCommandBuffer() else { continue }
             let duration = LayerRenderer.Clock.Instant.epoch.duration(to: drawable.frameTiming.presentationTime)
             let timestamp = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
             let anchor = head.state == .running ? head.queryDeviceAnchor(atTimestamp: timestamp) : nil
-            guard let anchor, anchor.isTracked else { continue }
-            let pose = anchor.originFromAnchorTransform
+            let pose = anchor?.isTracked == true ? anchor?.originFromAnchorTransform : nil
             drawable.deviceAnchor = anchor
-            if i == 0, let asset {
-                var glows = update(timestamp: timestamp, pose: pose, asset: asset, surface: &surface)
+            if i == 0, let pose, let asset {
+                let handTime = LayerRenderer.Clock.Instant.epoch.duration(to: drawable.frameTiming.trackableAnchorTime)
+                let handTimestamp = Double(handTime.components.seconds) + Double(handTime.components.attoseconds) / 1e18
+                var glows = update(timestamp: handTimestamp, pose: pose, asset: asset, surface: &surface)
                 // 近处的软边叠在远处的颗粒上。单帧 in-flight 结束后才能覆写顶点。
                 let backward = pose.columns.2.xyz
                 glows.sort { simd_dot($0.center.xyz, backward) < simd_dot($1.center.xyz, backward) }
@@ -397,8 +397,9 @@ final class StageRenderer: @unchecked Sendable {
             let model = reveal?.model(time, offset: offset) ?? matrix_identity_float4x4
             let layered = layer.configuration.layout == .layered
             let groups = layered ? [Array(drawable.views.indices)] : drawable.views.indices.map { [$0] }
-            var ready = true
-            for indices in groups where ready {
+            var ready = pose != nil
+            for indices in groups {
+                guard let pose, ready else { break }
                 let textureIndex = layered ? 0 : indices[0]
                 let arrayLength = layered ? drawable.views.count : 1
                 let rateMap = drawable.rasterizationRateMaps.isEmpty ? nil
@@ -429,17 +430,8 @@ final class StageRenderer: @unchecked Sendable {
                 guard ready else { break }
                 let hasOverlay = glowCount > 0 || surface != nil
                 if !paintWorld || hasOverlay {
-                    let pass = MTLRenderPassDescriptor()
-                    pass.colorAttachments[0].texture = colorTexture
-                    pass.colorAttachments[0].loadAction = paintWorld ? .load : .clear
-                    pass.colorAttachments[0].storeAction = .store
-                    pass.colorAttachments[0].clearColor = transparent
-                    pass.depthAttachment.texture = depthTexture
-                    pass.depthAttachment.loadAction = paintWorld ? .load : .clear
-                    pass.depthAttachment.storeAction = .store
-                    pass.depthAttachment.clearDepth = 0
-                    pass.rasterizationRateMap = rateMap
-                    pass.renderTargetArrayLength = arrayLength
+                    let pass = passDescriptor(for: drawable, textureIndex: textureIndex, arrayLength: arrayLength,
+                                              loadAction: paintWorld ? .load : .clear)
                     guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { ready = false; break }
                     if hasOverlay {
                         encoder.setDepthStencilState(glowDepth)
@@ -475,29 +467,54 @@ final class StageRenderer: @unchecked Sendable {
                     encoder.endEncoding()
                 }
             }
-            if ready {
-                drawable.encodePresent(commandBuffer: commands)
-                let revision = actionRevision
-                if drawable.target == .builtIn, let asset,
-                   control.state.withLock({ $0.revision == revision && $0.readyRevision != revision }) {
-                    let message = asset.readyMessage
-                    commands.addCompletedHandler { [control] buffer in
-                        if buffer.status == .completed, control.frameCompleted(revision: revision, message: message) {
-                            Self.log.info("First anchored frame completed for session \(control.id, privacy: .public), action \(revision)")
-                        }
+            if !ready {
+                // Acquired drawables still need a presentation event. Clear every eye if a pose
+                // or a Gaussian draw was unavailable, including a partially encoded stereo pair.
+                for textureIndex in drawable.colorTextures.indices {
+                    let pass = passDescriptor(for: drawable, textureIndex: textureIndex,
+                                              arrayLength: layered ? drawable.views.count : 1, loadAction: .clear)
+                    if let encoder = commands.makeRenderCommandEncoder(descriptor: pass) {
+                        encoder.endEncoding()
+                    } else {
+                        control.fail(lang.text("无法准备渲染画面，请重新进入场景。", "Could not prepare the display. Reopen the scene."))
                     }
                 }
             }
-            prior?.commit()
-            prior = commands
+
+            let revision = actionRevision
+            if ready, drawable.target == .builtIn, let asset,
+               control.state.withLock({ $0.revision == revision && $0.readyRevision != revision }) {
+                let message = asset.readyMessage
+                commands.addCompletedHandler { [control] buffer in
+                    if buffer.status == .completed, control.frameCompleted(revision: revision, message: message) {
+                        Self.log.info("First anchored frame completed for session \(control.id, privacy: .public), action \(revision)")
+                    }
+                }
+            }
+            drawable.encodePresent(commandBuffer: commands)
         }
 
-        if let prior {
-            let gate = gate
-            prior.addCompletedHandler { _ in gate.release() }
-            submitted = true
-            prior.commit()
-        }
+        commands.addCompletedHandler { [gate] _ in gate.release() }
+        submitted = true
+        commands.commit()
+        frame.endSubmission()
+    }
+
+    private func passDescriptor(for drawable: LayerRenderer.Drawable, textureIndex: Int, arrayLength: Int,
+                                loadAction: MTLLoadAction) -> MTLRenderPassDescriptor {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = drawable.colorTextures[textureIndex]
+        pass.colorAttachments[0].loadAction = loadAction
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = transparent
+        pass.depthAttachment.texture = drawable.depthTextures[textureIndex]
+        pass.depthAttachment.loadAction = loadAction
+        pass.depthAttachment.storeAction = .store
+        pass.depthAttachment.clearDepth = 0
+        let maps = drawable.rasterizationRateMaps
+        pass.rasterizationRateMap = maps.isEmpty ? nil : maps[min(textureIndex, maps.count - 1)]
+        pass.renderTargetArrayLength = arrayLength
+        return pass
     }
 }
 

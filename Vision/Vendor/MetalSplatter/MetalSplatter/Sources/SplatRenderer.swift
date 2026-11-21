@@ -1113,6 +1113,8 @@ public final class SplatRenderer: @unchecked Sendable {
                                           renderTargetArrayLength: renderTargetArrayLength,
                                           for: commandBuffer)
 
+        defer { renderEncoder.endEncoding() }
+
         let triangleVertexCount = indexedSplatCount * 6
         if renderState.triangleVertexIndexBuffer.count < triangleVertexCount {
             do {
@@ -1189,7 +1191,6 @@ public final class SplatRenderer: @unchecked Sendable {
             renderEncoder.popDebugGroup()
         }
 
-        renderEncoder.endEncoding()
         return true
     }
 
